@@ -1,0 +1,9 @@
+## Interface: 16001, 16000, 11601, 11600, 11506, 110105, 110107, 110200, 120000, 40402, 50500
+## Title: MX Keypad Sync
+## Notes: Syncs an action bar's ability icons and state to a Logitech MX Creative Keypad via a real-time pixel bridge.
+## Author: mx-wow
+## Version: 0.1.0
+## SavedVariables: MXKeypadSyncDB
+
+Bindings.xml
+MXKeypadSync.lua

@@ -1,0 +1,14 @@
+{
+  "name": "mx-wow-companion",
+  "version": "0.1.0",
+  "description": "Companion bridge that reads the MXKeypadSync WoW pixel bridge and renders ability icons onto the Logitech MX Creative Keypad.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@logitech-mx-creative-console/node": "^0.4.0"
+  }
+}

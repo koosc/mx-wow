@@ -1,0 +1,44 @@
+<Bindings>
+    <Binding name="CLICK MXKeypadSyncBtn1:LeftButton" header="MXKEYPADSYNC" category="ADDONS">
+        <!-- Slot 1 -->
+    </Binding>
+    <Binding name="CLICK MXKeypadSyncBtn2:LeftButton" category="ADDONS">
+        <!-- Slot 2 -->
+    </Binding>
+    <Binding name="CLICK MXKeypadSyncBtn3:LeftButton" category="ADDONS">
+        <!-- Slot 3 -->
+    </Binding>
+    <Binding name="CLICK MXKeypadSyncBtn4:LeftButton" category="ADDONS">
+        <!-- Slot 4 -->
+    </Binding>
+    <Binding name="CLICK MXKeypadSyncBtn5:LeftButton" category="ADDONS">
+        <!-- Slot 5 -->
+    </Binding>
+    <Binding name="CLICK MXKeypadSyncBtn6:LeftButton" category="ADDONS">
+        <!-- Slot 6 -->
+    </Binding>
+    <Binding name="CLICK MXKeypadSyncBtn7:LeftButton" category="ADDONS">
+        <!-- Slot 7 -->
+    </Binding>
+    <Binding name="CLICK MXKeypadSyncBtn8:LeftButton" category="ADDONS">
+        <!-- Slot 8 -->
+    </Binding>
+    <Binding name="CLICK MXKeypadSyncBtn9:LeftButton" category="ADDONS">
+        <!-- Slot 9 -->
+    </Binding>
+    <Binding name="CLICK MXKeypadSyncBtn10:LeftButton" category="ADDONS">
+        <!-- Slot 10 -->
+    </Binding>
+    <Binding name="CLICK MXKeypadSyncBtn11:LeftButton" category="ADDONS">
+        <!-- Slot 11 -->
+    </Binding>
+    <Binding name="CLICK MXKeypadSyncBtn12:LeftButton" category="ADDONS">
+        <!-- Slot 12 -->
+    </Binding>
+    <Binding name="MXKEYPADSYNC_PREV_BAR" category="ADDONS">
+        MXKeypadSync_CycleBar(-1)
+    </Binding>
+    <Binding name="MXKEYPADSYNC_NEXT_BAR" category="ADDONS">
+        MXKeypadSync_CycleBar(1)
+    </Binding>
+</Bindings>

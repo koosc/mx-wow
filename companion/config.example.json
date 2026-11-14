@@ -1,0 +1,29 @@
+{
+  "captureMode": "auto",
+  "captureRegion": {
+    "x": 0,
+    "y": 0,
+    "width": 320,
+    "height": 48
+  },
+  "pollIntervalMs": 100,
+  "brightness": 80,
+  "barCycleKeys": {
+    "prev": "CTRL+ALT+LEFT",
+    "next": "CTRL+ALT+RIGHT"
+  },
+  "keybindings": [
+    "CTRL+SHIFT+F1",
+    "CTRL+SHIFT+F2",
+    "CTRL+SHIFT+F3",
+    "CTRL+SHIFT+F4",
+    "CTRL+SHIFT+F5",
+    "CTRL+SHIFT+F6",
+    "CTRL+SHIFT+F7",
+    "CTRL+SHIFT+F8",
+    "CTRL+SHIFT+F9",
+    "CTRL+SHIFT+F10",
+    "CTRL+SHIFT+F11",
+    "CTRL+SHIFT+F12"
+  ]
+}
