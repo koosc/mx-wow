@@ -9,8 +9,8 @@
   "pollIntervalMs": 100,
   "brightness": 80,
   "barCycleKeys": {
-    "prev": "CTRL+ALT+LEFT",
-    "next": "CTRL+ALT+RIGHT"
+    "prev": "CTRL+SHIFT+F11",
+    "next": "CTRL+SHIFT+F12"
   },
   "keybindings": [
     "CTRL+SHIFT+F1",

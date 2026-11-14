@@ -101,13 +101,13 @@ async function main() {
 
   keypad.on('down', (control) => {
     if (control.index === 9) {
-      const prevKey = config.barCycleKeys?.prev || 'CTRL+ALT+LEFT';
+      const prevKey = config.barCycleKeys?.prev || 'CTRL+SHIFT+F11';
       console.log(`[Keypad] Prev Bar -> ${prevKey}`);
       keyboard.sendKey(prevKey);
       return;
     }
     if (control.index === 10) {
-      const nextKey = config.barCycleKeys?.next || 'CTRL+ALT+RIGHT';
+      const nextKey = config.barCycleKeys?.next || 'CTRL+SHIFT+F12';
       console.log(`[Keypad] Next Bar -> ${nextKey}`);
       keyboard.sendKey(nextKey);
       return;

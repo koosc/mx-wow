@@ -221,7 +221,7 @@ local function PrintHelp()
     print("  |cffffff00/mxk size <2-12>|r - Set pixel cell size")
     print("  |cffffff00/mxk pos <x> <y>|r - Set top-left offset")
     print("  |cffffff00/mxk dump|r - Print current 12 slot icon IDs")
-    print("  |cffffff00/mxk bind|r - Auto-bind Ctrl+Shift+F1..F12 (slots) & Ctrl+Alt+Left/Right (bars)")
+    print("  |cffffff00/mxk bind|r - Auto-bind Ctrl+Shift+F1..F9 (slots) & Ctrl+Shift+F11/F12 (bars)")
 end
 
 function MXKeypadSync_CycleBar(delta)
@@ -282,15 +282,15 @@ SlashCmdList["MXKEYPADSYNC"] = function(msg)
             print("|cff00d4ff[MXKeypadSync]|r Cannot change bindings in combat.")
             return
         end
-        for i = 1, NUM_SLOTS do
+        for i = 1, 9 do
             SetBinding("CTRL-SHIFT-F" .. i, "CLICK MXKeypadSyncBtn" .. i .. ":LeftButton")
         end
-        SetBinding("CTRL-ALT-LEFT", "MXKEYPADSYNC_PREV_BAR")
-        SetBinding("CTRL-ALT-RIGHT", "MXKEYPADSYNC_NEXT_BAR")
+        SetBinding("CTRL-SHIFT-F11", "MXKEYPADSYNC_PREV_BAR")
+        SetBinding("CTRL-SHIFT-F12", "MXKEYPADSYNC_NEXT_BAR")
         if SaveBindings and GetCurrentBindingSet then
             SaveBindings(GetCurrentBindingSet())
         end
-        print("|cff00d4ff[MXKeypadSync]|r Bound Ctrl+Shift+F1..F12 to slots 1..12 and Ctrl+Alt+Left/Right to cycle bars.")
+        print("|cff00d4ff[MXKeypadSync]|r Bound Ctrl+Shift+F1..F9 to slots 1..9 and Ctrl+Shift+F11/F12 to cycle bars.")
     elseif cmd == "dump" then
         local barInfo = BAR_SLOTS[MXKeypadSyncDB.bar] or BAR_SLOTS[3]
         print("|cff00d4ff[MXKeypadSync]|r Slots for " .. barInfo.name .. ":")
