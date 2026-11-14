@@ -42,24 +42,36 @@ local NUM_CELLS = 5 + NUM_SLOTS * 3 -- 3 magic cells + 2 meta cells (bar + gcd) 
 
 local bridgeFrame
 local cells = {}
+local lastCellPacked = {}
 local secureButtons = {}
 local pendingSecureUpdate = false
 local dirty = true
 local elapsedSinceUpdate = 0
-local UPDATE_INTERVAL = 0.08 -- ~12.5 Hz refresh for cooldowns/usability
+local MIN_UPDATE_INTERVAL = 0.05  -- Hard cap: max 20 Hz even under BG event storms
+local IDLE_UPDATE_INTERVAL = 0.12 -- ~8 Hz background refresh when no events fired
 local lastGcdStart = 0
 local gcdSeq = 0
 
-local function SetCellNibble(cellIndex, nR, nG, nB)
-    local tex = cells[cellIndex]
-    if not tex then return end
-    tex:SetColorTexture((nR * 17) / 255, (nG * 17) / 255, (nB * 17) / 255, 1)
+local slotIcon = {}
+local slotFlags = {}
+local slotExtra = {}
+for i = 1, NUM_SLOTS do
+    slotIcon[i] = 0
+    slotFlags[i] = 0
+    slotExtra[i] = 0
 end
 
 local function SetCellRGB(cellIndex, r, g, b)
+    local packed = r * 65536 + g * 256 + b
+    if lastCellPacked[cellIndex] == packed then return end
+    lastCellPacked[cellIndex] = packed
     local tex = cells[cellIndex]
     if not tex then return end
     tex:SetColorTexture(r / 255, g / 255, b / 255, 1)
+end
+
+local function SetCellNibble(cellIndex, nR, nG, nB)
+    SetCellRGB(cellIndex, nR * 17, nG * 17, nB * 17)
 end
 
 local function GetSlotCooldownInfo(slot)
@@ -145,12 +157,13 @@ local function UpdatePixelBridge()
     SetCellNibble(4, bit.band(barNum, 0xF), bit.band(maxBar, 0xF), 0xB)
 
     local gcdStart, gcdDur, gcdRem = GetActiveGcd()
-    local slotStates = {}
 
     for i = 1, NUM_SLOTS do
         local slot = baseSlot + (i - 1)
         local iconID, flags, extra, sStart, sDur, sRem = ReadSlotState(slot)
-        slotStates[i] = { iconID, flags, extra }
+        slotIcon[i] = iconID
+        slotFlags[i] = flags
+        slotExtra[i] = extra
         if gcdRem <= 0 and sRem > 0 then
             gcdStart, gcdDur, gcdRem = sStart, sDur, sRem
         end
@@ -174,7 +187,7 @@ local function UpdatePixelBridge()
     SetCellNibble(5, gcdSeq, progressNib, durNib)
 
     for i = 1, NUM_SLOTS do
-        local iconID, flags, extra = slotStates[i][1], slotStates[i][2], slotStates[i][3]
+        local iconID, flags, extra = slotIcon[i], slotFlags[i], slotExtra[i]
 
         -- Encode 28-bit iconID as 7 nibbles (n6..n0)
         local n0 = bit.band(iconID, 0xF)
@@ -255,7 +268,7 @@ local function InitUI()
 
     for i = 1, NUM_SLOTS do
         local btn = CreateFrame("Button", "MXKeypadSyncBtn" .. i, UIParent, "SecureActionButtonTemplate")
-        btn:RegisterForClicks("AnyUp", "AnyDown")
+        btn:RegisterForClicks("AnyDown")
         secureButtons[i] = btn
     end
 
@@ -362,7 +375,11 @@ eventFrame:RegisterEvent("ACTIONBAR_UPDATE_STATE")
 eventFrame:RegisterEvent("ACTIONBAR_UPDATE_USABLE")
 eventFrame:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
-eventFrame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+if eventFrame.RegisterUnitEvent then
+    eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+else
+    eventFrame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+end
 eventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -394,7 +411,10 @@ end)
 
 eventFrame:SetScript("OnUpdate", function(_, elapsed)
     elapsedSinceUpdate = elapsedSinceUpdate + elapsed
-    if dirty or elapsedSinceUpdate >= UPDATE_INTERVAL then
+    if elapsedSinceUpdate < MIN_UPDATE_INTERVAL then
+        return
+    end
+    if dirty or elapsedSinceUpdate >= IDLE_UPDATE_INTERVAL then
         elapsedSinceUpdate = 0
         dirty = false
         if bridgeFrame then
