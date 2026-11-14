@@ -68,18 +68,26 @@ export function decodePixelBridge(pixels, width, height, channels = 4) {
       const cellWidth = (magicEnd - x) / 3;
       if (x + Math.ceil(39 * cellWidth) > width) continue;
 
+      const sampleCell = (cellIdx) => {
+        const sx = Math.min(width - 1, Math.round(x + (cellIdx + 0.5) * cellWidth));
+        return getRGB(sx, midY);
+      };
+
+      // Check optional Cell 3 metadata: (bar, maxBar, 0xA)
+      const [mR, mG, mB] = sampleCell(3);
+      const hasMeta = toNibble(mB) === 0xA && toNibble(mR) >= 1 && toNibble(mR) <= 8;
+      const bar = hasMeta ? toNibble(mR) : null;
+      const maxBar = hasMeta ? Math.max(bar, toNibble(mG) || 5) : null;
+      const slotOffset = hasMeta ? 4 : 3;
+      if (x + Math.ceil((slotOffset + 36) * cellWidth) > width) continue;
+
       // Valid magic header found! Decode 12 slots.
       const slots = [];
       for (let i = 0; i < NUM_SLOTS; i++) {
-        const baseCell = 3 + i * 3;
-        const sample = (cellIdx) => {
-          const sx = Math.min(width - 1, Math.round(x + (cellIdx + 0.5) * cellWidth));
-          return getRGB(sx, midY);
-        };
-
-        const [aR, aG, aB] = sample(baseCell);
-        const [bR, bG, bB] = sample(baseCell + 1);
-        const [cR, cG, cB] = sample(baseCell + 2);
+        const baseCell = slotOffset + i * 3;
+        const [aR, aG, aB] = sampleCell(baseCell);
+        const [bR, bG, bB] = sampleCell(baseCell + 1);
+        const [cR, cG, cB] = sampleCell(baseCell + 2);
 
         const n6 = toNibble(aR);
         const n5 = toNibble(aG);
@@ -114,7 +122,7 @@ export function decodePixelBridge(pixels, width, height, channels = 4) {
         });
       }
 
-      return { cellSize: Number(cellWidth.toFixed(2)), originX: x, originY: y, slots };
+      return { cellSize: Number(cellWidth.toFixed(2)), originX: x, originY: y, bar, maxBar, slots };
     }
   }
 

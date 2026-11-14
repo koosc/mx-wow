@@ -38,7 +38,7 @@ local DEFAULTS = {
 }
 
 local NUM_SLOTS = 12
-local NUM_CELLS = 3 + NUM_SLOTS * 3 -- 3 magic cells + 3 cells per slot = 39 cells
+local NUM_CELLS = 4 + NUM_SLOTS * 3 -- 3 magic cells + 1 meta cell + 3 cells per slot = 40 cells
 
 local bridgeFrame
 local cells = {}
@@ -114,13 +114,17 @@ local function ReadSlotState(slot)
 end
 
 local function UpdatePixelBridge()
-    local barInfo = BAR_SLOTS[MXKeypadSyncDB.bar] or BAR_SLOTS[3]
+    local barNum = MXKeypadSyncDB.bar or 3
+    local barInfo = BAR_SLOTS[barNum] or BAR_SLOTS[3]
     local baseSlot = barInfo.start
+    local maxBar = (_G["MultiBar5Button1"] ~= nil) and 8 or 5
 
     -- Magic header: (255,0,255), (0,255,255), (255,255,0)
     SetCellRGB(1, 255, 0, 255)
     SetCellRGB(2, 0, 255, 255)
     SetCellRGB(3, 255, 255, 0)
+    -- Meta cell: (barNum, maxBar, 0xA marker)
+    SetCellNibble(4, bit.band(barNum, 0xF), bit.band(maxBar, 0xF), 0xA)
 
     for i = 1, NUM_SLOTS do
         local slot = baseSlot + (i - 1)
@@ -135,7 +139,7 @@ local function UpdatePixelBridge()
         local n5 = bit.band(bit.rshift(iconID, 20), 0xF)
         local n6 = bit.band(bit.rshift(iconID, 24), 0xF)
 
-        local c = 4 + (i - 1) * 3
+        local c = 5 + (i - 1) * 3
         SetCellNibble(c,     n6, n5, n4)
         SetCellNibble(c + 1, n3, n2, n1)
         SetCellNibble(c + 2, n0, flags, extra)

@@ -6,6 +6,7 @@ import {
   openMxCreativeConsole,
 } from '@logitech-mx-creative-console/node';
 import { IconCache } from './iconCache.js';
+import { BarCache } from './barCache.js';
 import { decodePixelBridge } from './pixelBridge.js';
 import { createCapturer } from './capture.js';
 import { createKeyboard } from './keyboard.js';
@@ -56,6 +57,16 @@ async function main() {
   const iconCache = new IconCache();
   await iconCache.init();
 
+  const barCache = new BarCache();
+  await barCache.init();
+
+  // Pre-warm BLP2 decode cache for any previously cached bars
+  for (const slots of barCache.bars.values()) {
+    for (const s of slots) {
+      if (s.hasAction && s.iconID) iconCache.getDecoded(s.iconID).catch(() => {});
+    }
+  }
+
   const keyboard = createKeyboard({ dryRun: args.dryRun });
   await keyboard.init();
 
@@ -70,14 +81,13 @@ async function main() {
   await capturer.init();
   console.log(`[Capture] Initialized (${config.captureMode || 'auto'})`);
 
-  let currentPage = 0; // 0 = slots 1..9, 1 = slots 10..12
   let latestSlots = [];
   const renderedState = new Array(9).fill('');
 
   async function refreshKeypad(force = false) {
+    const tasks = [];
     for (let keyIdx = 0; keyIdx < 9; keyIdx++) {
-      const slotIdx = currentPage * 9 + keyIdx;
-      const slot = latestSlots[slotIdx];
+      const slot = latestSlots[keyIdx];
       const sig = slot
         ? `${slot.hasAction ? 1 : 0}:${slot.iconID}:${slot.flags}:${slot.extra}`
         : 'empty';
@@ -86,34 +96,43 @@ async function main() {
       renderedState[keyIdx] = sig;
 
       if (!slot || !slot.hasAction || !slot.iconID) {
-        await keypad.clearKey(keyIdx).catch(() => {});
+        tasks.push(keypad.clearKey(keyIdx).catch(() => {}));
         continue;
       }
 
-      const rgba = await iconCache.renderSlot(slot, 118, 118);
-      if (rgba) {
-        await keypad.fillKeyBuffer(keyIdx, rgba, { format: 'rgba' }).catch((err) => {
-          console.warn(`[Keypad] fillKeyBuffer(${keyIdx}) error: ${err.message}`);
-        });
-      }
+      tasks.push(
+        iconCache.renderSlot(slot, 118, 118).then((rgba) => {
+          if (rgba) {
+            return keypad.fillKeyBuffer(keyIdx, rgba, { format: 'rgba' }).catch((err) => {
+              console.warn(`[Keypad] fillKeyBuffer(${keyIdx}) error: ${err.message}`);
+            });
+          }
+        })
+      );
+    }
+    if (tasks.length > 0) {
+      await Promise.all(tasks);
     }
   }
 
   keypad.on('down', (control) => {
-    if (control.index === 9) {
-      const prevKey = config.barCycleKeys?.prev || 'CTRL+SHIFT+F11';
-      console.log(`[Keypad] Prev Bar -> ${prevKey}`);
-      keyboard.sendKey(prevKey);
-      return;
-    }
-    if (control.index === 10) {
-      const nextKey = config.barCycleKeys?.next || 'CTRL+SHIFT+F12';
-      console.log(`[Keypad] Next Bar -> ${nextKey}`);
-      keyboard.sendKey(nextKey);
+    if (control.index === 9 || control.index === 10) {
+      const delta = control.index === 9 ? -1 : 1;
+      const key =
+        delta === -1
+          ? config.barCycleKeys?.prev || 'CTRL+SHIFT+F11'
+          : config.barCycleKeys?.next || 'CTRL+SHIFT+F12';
+      const { targetBar, cachedSlots } = barCache.predictCycle(delta);
+      console.log(`[Keypad] ${delta === -1 ? 'Prev' : 'Next'} Bar -> Bar ${targetBar} (${key})`);
+      keyboard.sendKey(key);
+      if (cachedSlots) {
+        latestSlots = cachedSlots;
+        refreshKeypad(false).catch(() => {});
+      }
       return;
     }
     if (control.index >= 0 && control.index < 9) {
-      const slotIdx = currentPage * 9 + control.index;
+      const slotIdx = control.index;
       const combo = config.keybindings?.[slotIdx];
       if (combo) {
         console.log(`[Keypad] Slot ${slotIdx + 1} -> ${combo}`);
@@ -136,6 +155,7 @@ async function main() {
     if (!running) return;
     running = false;
     clearInterval(brightnessTimer);
+    await barCache.flush().catch(() => {});
     await capturer.close();
     await keyboard.close();
     await keypad.close().catch(() => {});
@@ -153,11 +173,14 @@ async function main() {
         if (!bridgeFound) {
           bridgeFound = true;
           console.log(
-            `[Bridge] Locked onto MXKeypadSync at (${decoded.originX}, ${decoded.originY}), cellSize=${decoded.cellSize}px`
+            `[Bridge] Locked onto MXKeypadSync at (${decoded.originX}, ${decoded.originY}), cellSize=${decoded.cellSize}px, bar=${decoded.bar ?? '?'}`
           );
         }
-        latestSlots = decoded.slots;
-        await refreshKeypad(false);
+        const { ignored, slots } = barCache.onBridgeFrame(decoded);
+        if (!ignored && slots) {
+          latestSlots = slots;
+          await refreshKeypad(false);
+        }
       } else if (bridgeFound) {
         bridgeFound = false;
         console.log('[Bridge] Waiting for WoW MXKeypadSync pixel strip...');

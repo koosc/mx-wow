@@ -1,9 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { decodePixelBridge } from '../src/pixelBridge.js';
+import { BarCache } from '../src/barCache.js';
 import { decodeBLP2, renderKeyIcon } from '../src/blp.js';
 
-function encodeMockStrip(slots, cellSize = 4, offsetX = 2, offsetY = 1, jitter = 0) {
+function encodeMockStrip(slots, cellSize = 4, offsetX = 2, offsetY = 1, jitter = 0, meta = { bar: 3, maxBar: 5 }) {
   const width = 320;
   const height = 24;
   const pixels = new Uint8Array(width * height * 3);
@@ -23,12 +27,16 @@ function encodeMockStrip(slots, cellSize = 4, offsetX = 2, offsetY = 1, jitter =
   paintCell(0, 255, 0, 255);
   paintCell(1, 0, 255, 255);
   paintCell(2, 255, 255, 0);
+  if (meta) {
+    paintCell(3, meta.bar * 17, meta.maxBar * 17, 0xA * 17);
+  }
 
+  const slotStart = meta ? 4 : 3;
   for (let i = 0; i < 12; i++) {
     const s = slots[i] || { iconID: 0, flags: 0, extra: 0 };
     const id = s.iconID >>> 0;
     const nib = (shift) => ((id >>> shift) & 0xf) * 17;
-    const base = 3 + i * 3;
+    const base = slotStart + i * 3;
     paintCell(base, nib(24), nib(20), nib(16));
     paintCell(base + 1, nib(12), nib(8), nib(4));
     paintCell(base + 2, nib(0), (s.flags & 0xf) * 17, (s.extra & 0xf) * 17);
@@ -52,6 +60,8 @@ describe('pixelBridge', () => {
     assert.equal(decoded.cellSize, 4);
     assert.equal(decoded.originX, 3);
     assert.equal(decoded.originY, 2);
+    assert.equal(decoded.bar, 3);
+    assert.equal(decoded.maxBar, 5);
     assert.equal(decoded.slots.length, 12);
 
     assert.equal(decoded.slots[0].iconID, 135812);
@@ -90,5 +100,49 @@ describe('blp2 decoder', () => {
 
     const resized = renderKeyIcon(img.rgba, img.width, img.height, 118, 118, { isUsable: true });
     assert.equal(resized.length, 118 * 118 * 4);
+  });
+});
+
+describe('BarCache', () => {
+  it('optimistically switches to cached bar, ignores stale frames, and reconciles live frames', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mxwow-barcache-'));
+    const cacheFile = path.join(tmpDir, 'bars.json');
+    try {
+      const cache = new BarCache(cacheFile);
+      await cache.init();
+
+      const bar3Slots = [{ slot: 1, iconID: 135812, hasAction: true, isUsable: true, notEnoughMana: false, onCooldown: false, outOfRange: false, flags: 3, extra: 0 }];
+      const bar4Slots = [{ slot: 1, iconID: 136048, hasAction: true, isUsable: false, notEnoughMana: false, onCooldown: false, outOfRange: false, flags: 1, extra: 0 }];
+
+      cache.onBridgeFrame({ bar: 3, maxBar: 5, slots: bar3Slots }, 1000);
+      cache.onBridgeFrame({ bar: 4, maxBar: 5, slots: bar4Slots }, 1100);
+      cache.onBridgeFrame({ bar: 3, maxBar: 5, slots: bar3Slots }, 1200);
+
+      // Press Next Bar (3 -> 4): returns bar 4 cached slots immediately (preserving disabled/greyed-out state)
+      const pred = cache.predictCycle(1, 1300);
+      assert.equal(pred.targetBar, 4);
+      assert.equal(pred.cachedSlots[0].iconID, 136048);
+      assert.equal(pred.cachedSlots[0].isUsable, false);
+
+      // Stale frame from bar 3 arriving 100ms later is ignored
+      const stale = cache.onBridgeFrame({ bar: 3, maxBar: 5, slots: bar3Slots }, 1400);
+      assert.equal(stale.ignored, true);
+
+      // Live frame from bar 4 reconciles and clears pending switch
+      const liveBar4 = [{ slot: 1, iconID: 136048, hasAction: true, isUsable: true, onCooldown: true, flags: 11, extra: 0 }];
+      const live = cache.onBridgeFrame({ bar: 4, maxBar: 5, slots: liveBar4 }, 1450);
+      assert.equal(live.ignored, false);
+      assert.equal(live.bar, 4);
+      assert.equal(live.slots[0].onCooldown, true);
+
+      await cache.flush();
+
+      // Reload from disk and verify persistence
+      const reloaded = new BarCache(cacheFile);
+      await reloaded.init();
+      assert.equal(reloaded.bars.get(4)[0].iconID, 136048);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });
