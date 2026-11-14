@@ -76,7 +76,7 @@ export class IconCache {
     }
   }
 
-  async renderSlot(slot, width = 118, height = 118) {
+  async renderSlot(slot, width = 118, height = 118, gcdProgress = null) {
     if (!slot.hasAction || !slot.iconID) {
       return null;
     }
@@ -90,6 +90,7 @@ export class IconCache {
       onCooldown: slot.onCooldown,
       isCurrent: slot.isCurrent,
       outOfRange: slot.outOfRange,
+      gcdProgress,
     });
   }
 }

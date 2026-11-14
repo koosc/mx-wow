@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CACHE_PATH = path.resolve(__dirname, '..', '.cache', 'bars.json');
 
 function serializeBarSig(slots) {
-  return slots.map((s) => `${s.hasAction ? 1 : 0}:${s.iconID}:${s.flags}:${s.extra}`).join(',');
+  return slots.map((s) => `${s.hasAction ? 1 : 0}:${s.iconID}:${s.flags}:${s.extra & ~5}`).join(',');
 }
 
 function toPreviewSlots(slots) {
@@ -19,8 +19,9 @@ function toPreviewSlots(slots) {
     onCooldown: s.onCooldown,
     isCurrent: false,
     outOfRange: s.outOfRange,
+    onGCD: false,
     flags: s.flags,
-    extra: s.extra & ~1,
+    extra: s.extra & ~5,
   }));
 }
 

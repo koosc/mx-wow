@@ -73,13 +73,24 @@ export function decodePixelBridge(pixels, width, height, channels = 4) {
         return getRGB(sx, midY);
       };
 
-      // Check optional Cell 3 metadata: (bar, maxBar, 0xA)
+      // Check optional Cell 3 metadata: (bar, maxBar, marker: 0xA=40 cells, 0xB=41 cells with GCD)
       const [mR, mG, mB] = sampleCell(3);
-      const hasMeta = toNibble(mB) === 0xA && toNibble(mR) >= 1 && toNibble(mR) <= 8;
+      const marker = toNibble(mB);
+      const hasMeta = (marker === 0xA || marker === 0xB) && toNibble(mR) >= 1 && toNibble(mR) <= 8;
+      const hasGcdCell = hasMeta && marker === 0xB;
       const bar = hasMeta ? toNibble(mR) : null;
       const maxBar = hasMeta ? Math.max(bar, toNibble(mG) || 5) : null;
-      const slotOffset = hasMeta ? 4 : 3;
+      const slotOffset = hasGcdCell ? 5 : hasMeta ? 4 : 3;
       if (x + Math.ceil((slotOffset + 36) * cellWidth) > width) continue;
+
+      let gcd = null;
+      if (hasGcdCell) {
+        const [gR, gG, gB] = sampleCell(4);
+        const seq = toNibble(gR);
+        const progress = toNibble(gG) / 15;
+        const durationMs = toNibble(gB) * 100;
+        gcd = seq > 0 && durationMs > 0 ? { seq, progress, durationMs } : { seq: 0, progress: 0, durationMs: 0 };
+      }
 
       // Valid magic header found! Decode 12 slots.
       const slots = [];
@@ -117,12 +128,13 @@ export function decodePixelBridge(pixels, width, height, channels = 4) {
           onCooldown: (flags & 8) !== 0,
           isCurrent: (extra & 1) !== 0,
           outOfRange: (extra & 2) !== 0,
+          onGCD: (extra & 4) !== 0,
           flags,
           extra,
         });
       }
 
-      return { cellSize: Number(cellWidth.toFixed(2)), originX: x, originY: y, bar, maxBar, slots };
+      return { cellSize: Number(cellWidth.toFixed(2)), originX: x, originY: y, bar, maxBar, gcd, slots };
     }
   }
 

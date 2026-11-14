@@ -38,7 +38,7 @@ local DEFAULTS = {
 }
 
 local NUM_SLOTS = 12
-local NUM_CELLS = 4 + NUM_SLOTS * 3 -- 3 magic cells + 1 meta cell + 3 cells per slot = 40 cells
+local NUM_CELLS = 5 + NUM_SLOTS * 3 -- 3 magic cells + 2 meta cells (bar + gcd) + 3 cells per slot = 41 cells
 
 local bridgeFrame
 local cells = {}
@@ -47,6 +47,8 @@ local pendingSecureUpdate = false
 local dirty = true
 local elapsedSinceUpdate = 0
 local UPDATE_INTERVAL = 0.08 -- ~12.5 Hz refresh for cooldowns/usability
+local lastGcdStart = 0
+local gcdSeq = 0
 
 local function SetCellNibble(cellIndex, nR, nG, nB)
     local tex = cells[cellIndex]
@@ -60,36 +62,49 @@ local function SetCellRGB(cellIndex, r, g, b)
     tex:SetColorTexture(r / 255, g / 255, b / 255, 1)
 end
 
-local function GetSlotCooldownRemaining(slot)
+local function GetSlotCooldownInfo(slot)
     if GetActionCooldown then
         local start, duration = GetActionCooldown(slot)
         if type(start) == "table" then
-            -- Future-proof if API returns a table
             duration = start.duration or 0
             start = start.startTime or 0
         end
-        if start and start > 0 and duration and duration > 1.5 then
+        if start and start > 0 and duration and duration > 0 then
             local rem = (start + duration) - GetTime()
             if rem > 0 then
-                return rem
+                return start, duration, rem
             end
         end
     end
-    return 0
+    return 0, 0, 0
+end
+
+local function GetActiveGcd()
+    if GetSpellCooldown then
+        local start, duration = GetSpellCooldown(61304)
+        if start and start > 0 and duration and duration > 0 and duration <= 1.5 then
+            local rem = (start + duration) - GetTime()
+            if rem > 0 then
+                return start, duration, rem
+            end
+        end
+    end
+    return 0, 0, 0
 end
 
 local function ReadSlotState(slot)
     local hasAction = HasAction(slot)
     if not hasAction then
-        return 0, 0, 0
+        return 0, 0, 0, 0, 0, 0
     end
 
     local tex = GetActionTexture(slot)
     local iconID = (type(tex) == "number") and tex or 0
 
     local isUsable, notEnoughMana = IsUsableAction(slot)
-    local cdRem = GetSlotCooldownRemaining(slot)
-    local onCooldown = cdRem > 0
+    local cdStart, cdDur, cdRem = GetSlotCooldownInfo(slot)
+    local onCooldown = cdRem > 0 and cdDur > 1.5
+    local onGCD = cdRem > 0 and cdDur > 0 and cdDur <= 1.5
 
     local flags = 1 -- bit 0: hasAction
     if isUsable then
@@ -109,8 +124,11 @@ local function ReadSlotState(slot)
     if IsActionInRange(slot) == false then
         extra = extra + 2 -- bit 1: out of range
     end
+    if onGCD then
+        extra = extra + 4 -- bit 2: affected by active GCD
+    end
 
-    return iconID, flags, extra
+    return iconID, flags, extra, (onGCD and cdStart or 0), (onGCD and cdDur or 0), (onGCD and cdRem or 0)
 end
 
 local function UpdatePixelBridge()
@@ -123,12 +141,40 @@ local function UpdatePixelBridge()
     SetCellRGB(1, 255, 0, 255)
     SetCellRGB(2, 0, 255, 255)
     SetCellRGB(3, 255, 255, 0)
-    -- Meta cell: (barNum, maxBar, 0xA marker)
-    SetCellNibble(4, bit.band(barNum, 0xF), bit.band(maxBar, 0xF), 0xA)
+    -- Meta cell 1: (barNum, maxBar, 0xB marker for 41-cell layout with GCD)
+    SetCellNibble(4, bit.band(barNum, 0xF), bit.band(maxBar, 0xF), 0xB)
+
+    local gcdStart, gcdDur, gcdRem = GetActiveGcd()
+    local slotStates = {}
 
     for i = 1, NUM_SLOTS do
         local slot = baseSlot + (i - 1)
-        local iconID, flags, extra = ReadSlotState(slot)
+        local iconID, flags, extra, sStart, sDur, sRem = ReadSlotState(slot)
+        slotStates[i] = { iconID, flags, extra }
+        if gcdRem <= 0 and sRem > 0 then
+            gcdStart, gcdDur, gcdRem = sStart, sDur, sRem
+        end
+    end
+
+    local progressNib, durNib = 0, 0
+    if gcdRem > 0 and gcdDur > 0 then
+        if math.abs(gcdStart - lastGcdStart) > 0.05 then
+            lastGcdStart = gcdStart
+            gcdSeq = (gcdSeq % 15) + 1
+        end
+        local prog = math.max(0, math.min(1, 1 - (gcdRem / gcdDur)))
+        progressNib = math.min(15, math.floor(prog * 15 + 0.5))
+        durNib = math.max(1, math.min(15, math.floor(gcdDur * 10 + 0.5)))
+    else
+        gcdSeq = 0
+        lastGcdStart = 0
+    end
+
+    -- Meta cell 2: (gcdSeq, gcdProgressNibble, gcdDurationDeciseconds)
+    SetCellNibble(5, gcdSeq, progressNib, durNib)
+
+    for i = 1, NUM_SLOTS do
+        local iconID, flags, extra = slotStates[i][1], slotStates[i][2], slotStates[i][3]
 
         -- Encode 28-bit iconID as 7 nibbles (n6..n0)
         local n0 = bit.band(iconID, 0xF)
@@ -139,7 +185,7 @@ local function UpdatePixelBridge()
         local n5 = bit.band(bit.rshift(iconID, 20), 0xF)
         local n6 = bit.band(bit.rshift(iconID, 24), 0xF)
 
-        local c = 5 + (i - 1) * 3
+        local c = 6 + (i - 1) * 3
         SetCellNibble(c,     n6, n5, n4)
         SetCellNibble(c + 1, n3, n2, n1)
         SetCellNibble(c + 2, n0, flags, extra)
@@ -315,6 +361,8 @@ eventFrame:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
 eventFrame:RegisterEvent("ACTIONBAR_UPDATE_STATE")
 eventFrame:RegisterEvent("ACTIONBAR_UPDATE_USABLE")
 eventFrame:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
+eventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
+eventFrame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 eventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -330,6 +378,10 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
             end
             InitUI()
         end
+        return
+    end
+
+    if event == "UNIT_SPELLCAST_SUCCEEDED" and arg1 ~= "player" then
         return
     end
 

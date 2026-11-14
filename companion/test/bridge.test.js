@@ -7,7 +7,14 @@ import { decodePixelBridge } from '../src/pixelBridge.js';
 import { BarCache } from '../src/barCache.js';
 import { decodeBLP2, renderKeyIcon } from '../src/blp.js';
 
-function encodeMockStrip(slots, cellSize = 4, offsetX = 2, offsetY = 1, jitter = 0, meta = { bar: 3, maxBar: 5 }) {
+function encodeMockStrip(
+  slots,
+  cellSize = 4,
+  offsetX = 2,
+  offsetY = 1,
+  jitter = 0,
+  meta = { bar: 3, maxBar: 5, gcd: { seq: 4, progressNib: 5, durNib: 15 } }
+) {
   const width = 320;
   const height = 24;
   const pixels = new Uint8Array(width * height * 3);
@@ -28,10 +35,14 @@ function encodeMockStrip(slots, cellSize = 4, offsetX = 2, offsetY = 1, jitter =
   paintCell(1, 0, 255, 255);
   paintCell(2, 255, 255, 0);
   if (meta) {
-    paintCell(3, meta.bar * 17, meta.maxBar * 17, 0xA * 17);
+    const hasGcd = Boolean(meta.gcd);
+    paintCell(3, meta.bar * 17, meta.maxBar * 17, (hasGcd ? 0xB : 0xA) * 17);
+    if (hasGcd) {
+      paintCell(4, meta.gcd.seq * 17, meta.gcd.progressNib * 17, meta.gcd.durNib * 17);
+    }
   }
 
-  const slotStart = meta ? 4 : 3;
+  const slotStart = meta ? (meta.gcd ? 5 : 4) : 3;
   for (let i = 0; i < 12; i++) {
     const s = slots[i] || { iconID: 0, flags: 0, extra: 0 };
     const id = s.iconID >>> 0;
@@ -48,9 +59,9 @@ function encodeMockStrip(slots, cellSize = 4, offsetX = 2, offsetY = 1, jitter =
 describe('pixelBridge', () => {
   it('decodes 12 slots with 28-bit iconIDs and flags even under +-5 color drift', () => {
     const input = [
-      { iconID: 135812, flags: 0b0011, extra: 0b01 }, // Fireball
-      { iconID: 136048, flags: 0b1011, extra: 0b10 }, // Frostbolt on CD, out of range
-      { iconID: 4622456, flags: 0b0101, extra: 0b00 }, // Large FileDataID, OOM
+      { iconID: 135812, flags: 0b0011, extra: 0b101 }, // Fireball active + onGCD
+      { iconID: 136048, flags: 0b1011, extra: 0b010 }, // Frostbolt on CD, out of range
+      { iconID: 4622456, flags: 0b0101, extra: 0b000 }, // Large FileDataID, OOM
       { iconID: 0, flags: 0, extra: 0 },
     ];
     const { pixels, width, height } = encodeMockStrip(input, 4, 3, 2, 5);
@@ -62,12 +73,15 @@ describe('pixelBridge', () => {
     assert.equal(decoded.originY, 2);
     assert.equal(decoded.bar, 3);
     assert.equal(decoded.maxBar, 5);
+    assert.equal(decoded.gcd.seq, 4);
+    assert.equal(decoded.gcd.durationMs, 1500);
     assert.equal(decoded.slots.length, 12);
 
     assert.equal(decoded.slots[0].iconID, 135812);
     assert.equal(decoded.slots[0].hasAction, true);
     assert.equal(decoded.slots[0].isUsable, true);
     assert.equal(decoded.slots[0].isCurrent, true);
+    assert.equal(decoded.slots[0].onGCD, true);
 
     assert.equal(decoded.slots[1].iconID, 136048);
     assert.equal(decoded.slots[1].onCooldown, true);
@@ -100,6 +114,14 @@ describe('blp2 decoder', () => {
 
     const resized = renderKeyIcon(img.rgba, img.width, img.height, 118, 118, { isUsable: true });
     assert.equal(resized.length, 118 * 118 * 4);
+
+    // At gcdProgress=0.25, top-right quadrant (x=90,y=25) is swept (bright), bottom-left (x=25,y=90) is darkened
+    const whiteSrc = new Uint8Array(64 * 64 * 4).fill(200);
+    const swept = renderKeyIcon(whiteSrc, 64, 64, 118, 118, { isUsable: true, gcdProgress: 0.25 });
+    const topRightIdx = (25 * 118 + 90) * 4;
+    const bottomLeftIdx = (90 * 118 + 25) * 4;
+    assert.equal(swept[topRightIdx], 200);
+    assert.equal(swept[bottomLeftIdx], 50);
   });
 });
 

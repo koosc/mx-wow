@@ -205,7 +205,18 @@ export function decodeBLP2(buffer) {
  */
 export function renderKeyIcon(srcRgba, srcW, srcH, dstW = 118, dstH = 118, state = {}) {
   const out = new Uint8Array(dstW * dstH * 4);
-  const { isUsable = true, notEnoughMana = false, onCooldown = false, isCurrent = false, outOfRange = false } = state;
+  const {
+    isUsable = true,
+    notEnoughMana = false,
+    onCooldown = false,
+    isCurrent = false,
+    outOfRange = false,
+    gcdProgress = null,
+  } = state;
+  const hasGcdSweep = typeof gcdProgress === 'number' && gcdProgress >= 0 && gcdProgress < 1 && !onCooldown;
+  const cx = (dstW - 1) / 2;
+  const cy = (dstH - 1) / 2;
+  const TWO_PI = Math.PI * 2;
 
   for (let y = 0; y < dstH; y++) {
     const sy = ((y + 0.5) * srcH) / dstH - 0.5;
@@ -246,6 +257,26 @@ export function renderKeyIcon(srcRgba, srcW, srcH, dstW = 118, dstH = 118, state
         r = lum * 0.45;
         g = lum * 0.45;
         b = lum * 0.45;
+      }
+
+      // Radial clockwise GCD sweep from 12 o'clock
+      if (hasGcdSweep) {
+        const dx = x - cx;
+        const dy = y - cy;
+        let theta = Math.atan2(dx, -dy);
+        if (theta < 0) theta += TWO_PI;
+        const frac = theta / TWO_PI;
+        if (frac >= gcdProgress) {
+          r *= 0.25;
+          g *= 0.25;
+          b *= 0.25;
+        }
+        const distSq = dx * dx + dy * dy;
+        if (distSq > 16 && Math.abs(frac - gcdProgress) < 0.022) {
+          r = r * 0.3 + 255 * 0.7;
+          g = g * 0.3 + 245 * 0.7;
+          b = b * 0.3 + 200 * 0.7;
+        }
       }
 
       // Subtle 3px border for active/out-of-range

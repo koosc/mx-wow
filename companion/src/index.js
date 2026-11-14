@@ -83,35 +83,74 @@ async function main() {
 
   let latestSlots = [];
   const renderedState = new Array(9).fill('');
+  const gcdState = { seq: 0, startMs: 0, endMs: 0 };
+  let gcdTimer = null;
+  let refreshInFlight = false;
+
+  function getActiveGcdStep() {
+    if (!gcdState.seq || gcdState.endMs <= gcdState.startMs) return null;
+    const now = Date.now();
+    if (now >= gcdState.endMs) return null;
+    const p = Math.max(0, Math.min(0.99, (now - gcdState.startMs) / (gcdState.endMs - gcdState.startMs)));
+    return Math.floor(p * 20) / 20;
+  }
+
+  function stopGcdTimer() {
+    if (gcdTimer) {
+      clearInterval(gcdTimer);
+      gcdTimer = null;
+    }
+  }
+
+  function ensureGcdTimer() {
+    if (gcdTimer) return;
+    gcdTimer = setInterval(() => {
+      if (getActiveGcdStep() === null) {
+        gcdState.seq = 0;
+        stopGcdTimer();
+      }
+      if (!refreshInFlight) {
+        refreshKeypad(false).catch(() => {});
+      }
+    }, 75);
+  }
 
   async function refreshKeypad(force = false) {
-    const tasks = [];
-    for (let keyIdx = 0; keyIdx < 9; keyIdx++) {
-      const slot = latestSlots[keyIdx];
-      const sig = slot
-        ? `${slot.hasAction ? 1 : 0}:${slot.iconID}:${slot.flags}:${slot.extra}`
-        : 'empty';
+    if (refreshInFlight && !force) return;
+    refreshInFlight = true;
+    try {
+      const gcdStep = getActiveGcdStep();
+      const tasks = [];
+      for (let keyIdx = 0; keyIdx < 9; keyIdx++) {
+        const slot = latestSlots[keyIdx];
+        const slotGcd = slot && slot.onGCD && !slot.onCooldown ? gcdStep : null;
+        const sig = slot
+          ? `${slot.hasAction ? 1 : 0}:${slot.iconID}:${slot.flags}:${slot.extra}:${slotGcd === null ? '' : slotGcd}`
+          : 'empty';
 
-      if (!force && renderedState[keyIdx] === sig) continue;
-      renderedState[keyIdx] = sig;
+        if (!force && renderedState[keyIdx] === sig) continue;
+        renderedState[keyIdx] = sig;
 
-      if (!slot || !slot.hasAction || !slot.iconID) {
-        tasks.push(keypad.clearKey(keyIdx).catch(() => {}));
-        continue;
+        if (!slot || !slot.hasAction || !slot.iconID) {
+          tasks.push(keypad.clearKey(keyIdx).catch(() => {}));
+          continue;
+        }
+
+        tasks.push(
+          iconCache.renderSlot(slot, 118, 118, slotGcd).then((rgba) => {
+            if (rgba) {
+              return keypad.fillKeyBuffer(keyIdx, rgba, { format: 'rgba' }).catch((err) => {
+                console.warn(`[Keypad] fillKeyBuffer(${keyIdx}) error: ${err.message}`);
+              });
+            }
+          })
+        );
       }
-
-      tasks.push(
-        iconCache.renderSlot(slot, 118, 118).then((rgba) => {
-          if (rgba) {
-            return keypad.fillKeyBuffer(keyIdx, rgba, { format: 'rgba' }).catch((err) => {
-              console.warn(`[Keypad] fillKeyBuffer(${keyIdx}) error: ${err.message}`);
-            });
-          }
-        })
-      );
-    }
-    if (tasks.length > 0) {
-      await Promise.all(tasks);
+      if (tasks.length > 0) {
+        await Promise.all(tasks);
+      }
+    } finally {
+      refreshInFlight = false;
     }
   }
 
@@ -154,6 +193,7 @@ async function main() {
   const shutdown = async () => {
     if (!running) return;
     running = false;
+    stopGcdTimer();
     clearInterval(brightnessTimer);
     await barCache.flush().catch(() => {});
     await capturer.close();
@@ -175,6 +215,19 @@ async function main() {
           console.log(
             `[Bridge] Locked onto MXKeypadSync at (${decoded.originX}, ${decoded.originY}), cellSize=${decoded.cellSize}px, bar=${decoded.bar ?? '?'}`
           );
+        }
+        if (decoded.gcd) {
+          if (decoded.gcd.seq > 0 && decoded.gcd.durationMs > 0) {
+            if (decoded.gcd.seq !== gcdState.seq) {
+              gcdState.seq = decoded.gcd.seq;
+              gcdState.startMs = Date.now() - decoded.gcd.progress * decoded.gcd.durationMs;
+              gcdState.endMs = gcdState.startMs + decoded.gcd.durationMs;
+              ensureGcdTimer();
+            }
+          } else if (gcdState.seq !== 0) {
+            gcdState.seq = 0;
+            stopGcdTimer();
+          }
         }
         const { ignored, slots } = barCache.onBridgeFrame(decoded);
         if (!ignored && slots) {
