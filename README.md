@@ -1,14 +1,16 @@
-# MX Keypad Sync for World of Warcraft
+# MX Keypad Sync for World of Warcraft Forever
 
-Syncs a World of Warcraft action bar (default: **Action Bar 3 / Bottom Right**, slots `61–72`) to a **Logitech MX Creative Keypad** (`046d:c354`) in real time, displaying each ability's icon and state (usable, cooldown, out of mana, out of range, active) on the keypad's 9 LCD screens.
+![MX Keypad Sync Demo](assets/demo.gif)
 
-- **Page 1 (default):** Slots `1–9` of the action bar on the 3×3 LCD grid.
-- **Page 2 (press Right Page button):** Slots `10–12` on the top row. Press Left Page button to return to Page 1.
+Syncs World of Warcraft action bars (default: **Action Bar 3 / Bottom Right**, slots `61–72`) to a **Logitech MX Creative Keypad** (`046d:c354`) in real time, displaying each ability's icon, disabled/cooldown/mana/range state, and clockwise **Global Cooldown (GCD)** sweep animation on the keypad's 9 LCD screens.
+
+- **9 LCD Keys:** Slots `1–9` of the active action bar.
+- **2 Page Buttons (`◀` / `▶`):** Cycle through all available action bars (Bars `1–5` in Classic/Forever, `1–8` in Retail) with instant cached switching.
 
 ## Architecture
 
-1. **[wow-addon/MXKeypadSync](wow-addon/MXKeypadSync/)**: A lightweight WoW Lua addon that encodes the 12 slots' `iconFileID` and state flags into a tiny `156×4` pixel strip at the top-left of the screen using a 4-bit-per-channel encoding (immune to Proton/DXVK/compositor color drift).
-2. **[companion/](companion/)**: A cross-platform Node.js companion app (works on **Ubuntu Linux** and **Windows**) that captures the pixel strip, fetches & caches the WoW BLP2 icons from `wago.tools`, renders `118×118` icons to the MX Keypad over USB HID, and injects keystrokes when keypad buttons are pressed.
+1. **[wow-addon/MXKeypadSync](wow-addon/MXKeypadSync/)**: A lightweight WoW Lua addon that encodes the active bar, GCD progress, and 12 slots' `iconFileID` + state flags into a tiny `164×4` pixel strip at the top-left of the screen using a 4-bit-per-channel encoding (immune to Proton/DXVK/compositor color drift).
+2. **[companion/](companion/)**: A cross-platform Node.js companion app (works on **Ubuntu Linux** and **Windows**) that captures the pixel strip, fetches & caches WoW BLP2 icons from `wago.tools`, caches bar layouts for instant switching, renders `118×118` icons + GCD sweeps to the MX Keypad over USB HID, and injects keystrokes when keypad buttons are pressed.
 
 ---
 
@@ -27,11 +29,11 @@ In-game slash commands:
 - `/mxk size <2-16>` — Adjust pixel cell size (default: `4`)
 - `/mxk pos <x> <y>` — Adjust top-left offset
 - `/mxk dump` — Print the 12 slot icon IDs and flags in chat
+- `/mxk bind` — Auto-bind `Ctrl+Shift+F1..F9` (slots) and `Ctrl+Shift+F11/F12` (prev/next bar)
 
 ### Bind Keys in WoW
 
-1. Open **Options → Keybindings → AddOns → MX Keypad Sync**.
-2. Bind **MX Keypad Slot 1** through **MX Keypad Slot 12** to match `companion/config.json` (defaults to `Ctrl+Shift+1` through `Ctrl+Shift+=`).
+Run `/mxk bind` in WoW chat (out of combat), or bind manually under **Options → Keybindings → AddOns → MX Keypad Sync** to match `companion/config.json` (defaults to `Ctrl+Shift+F1`–`Ctrl+Shift+F9` for slots and `Ctrl+Shift+F11` / `Ctrl+Shift+F12` for cycling bars).
 
 ---
 
